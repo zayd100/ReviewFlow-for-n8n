@@ -1,0 +1,154 @@
+{
+  "name": "Google Review Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "sale-completed",
+        "httpMethod": "POST",
+        "responseMode": "onReceived"
+      },
+      "id": "Webhook_Trigger",
+      "name": "Sale Completed Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "days"
+      },
+      "id": "Wait_2_Days",
+      "name": "Wait 2 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "from": "+1234567890",
+        "to": "={{$json[\"phone\"]}}",
+        "message": "Hey {{$json[\"customer_name\"]}} 👋 Thanks for choosing us for your {{$json[\"service\"]}}. We'd really appreciate a quick Google review: https://g.page/r/YOUR-REVIEW-LINK/review"
+      },
+      "id": "Send_Review_SMS",
+      "name": "Send Review SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [700, 300],
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "days"
+      },
+      "id": "Wait_5_Days",
+      "name": "Wait 5 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [950, 300]
+    },
+    {
+      "parameters": {
+        "from": "+1234567890",
+        "to": "={{$json[\"phone\"]}}",
+        "message": "Hey {{$json[\"customer_name\"]}} 👋 Just a quick reminder — if you enjoyed your experience with us, we'd love a Google review 🙏 https://g.page/r/YOUR-REVIEW-LINK/review"
+      },
+      "id": "Reminder_SMS",
+      "name": "Send Reminder SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1200, 300],
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "business@example.com",
+        "toEmail": "owner@example.com",
+        "subject": "Review Reminder Sent",
+        "text": "A reminder SMS was sent to {{$json[\"customer_name\"]}} for a Google review request."
+      },
+      "id": "Notify_Owner",
+      "name": "Notify Owner",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [1450, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Business Gmail"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Sale Completed Trigger": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 Days": {
+      "main": [
+        [
+          {
+            "node": "Send Review SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Review SMS": {
+      "main": [
+        [
+          {
+            "node": "Wait 5 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5 Days": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder SMS": {
+      "main": [
+        [
+          {
+            "node": "Notify Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1"
+}
