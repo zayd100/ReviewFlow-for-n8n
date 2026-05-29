@@ -3,7 +3,7 @@
 An n8n workflow that automatically requests Google reviews from customers after a completed sale or service. Built for local businesses that want a reliable way to increase review volume without manually following up with every customer.
 
 Works well for car dealerships, detailers, mechanics, cleaning businesses, home services, and small retail shops.
-
+![Workflow Overview](workflow.png)
 ---
 
 ## What This Workflow Does
