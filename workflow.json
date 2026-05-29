@@ -11,7 +11,33 @@
       "name": "Sale Completed Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [200, 300]
+      "position": [200, 300],
+      "notes": "Expects payload: customer_name, phone, service, sale_id, review_link (optional), opted_out (optional bool)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"sale_id\"]}}",
+              "operation": "isNotEmpty"
+            }
+          ],
+          "boolean": [
+            {
+              "value1": "={{$json[\"opted_out\"]}}",
+              "value2": false
+            }
+          ]
+        },
+        "combineOperation": "all"
+      },
+      "id": "Check_Dedup_OptOut",
+      "name": "Check: Valid & Not Opted Out",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [420, 300],
+      "notes": "Passes only if sale_id is present (deduplication guard) and customer has not opted out"
     },
     {
       "parameters": {
@@ -22,25 +48,44 @@
       "name": "Wait 2 Days",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1,
-      "position": [450, 300]
+      "position": [650, 180]
     },
     {
       "parameters": {
         "from": "+1234567890",
         "to": "={{$json[\"phone\"]}}",
-        "message": "Hey {{$json[\"customer_name\"]}} 👋 Thanks for choosing us for your {{$json[\"service\"]}}. We'd really appreciate a quick Google review: https://g.page/r/YOUR-REVIEW-LINK/review"
+        "message": "Hey {{$json[\"customer_name\"]}} - Thanks for choosing us for your {{$json[\"service\"]}}. We'd really appreciate a quick Google review: {{$json[\"review_link\"] || \"https://g.page/r/YOUR-REVIEW-LINK/review\"}}"
       },
       "id": "Send_Review_SMS",
       "name": "Send Review SMS",
       "type": "n8n-nodes-base.twilio",
       "typeVersion": 1,
-      "position": [700, 300],
+      "position": [900, 180],
       "credentials": {
         "twilioApi": {
           "id": "YOUR_TWILIO_CREDENTIAL_ID",
           "name": "Twilio Account"
         }
-      }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"error\"]}}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "Check_SMS1_Success",
+      "name": "SMS 1 Sent Successfully?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1130, 180],
+      "notes": "Only continue to reminder sequence if first SMS was delivered"
     },
     {
       "parameters": {
@@ -51,23 +96,79 @@
       "name": "Wait 5 Days",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1,
-      "position": [950, 300]
+      "position": [1360, 60]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json[\"opted_out\"]}}",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "id": "Check_OptOut_Before_Reminder",
+      "name": "Still Not Opted Out?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1580, 60],
+      "notes": "Re-check opt-out status before sending reminder in case customer replied STOP after first SMS"
     },
     {
       "parameters": {
         "from": "+1234567890",
         "to": "={{$json[\"phone\"]}}",
-        "message": "Hey {{$json[\"customer_name\"]}} 👋 Just a quick reminder — if you enjoyed your experience with us, we'd love a Google review 🙏 https://g.page/r/YOUR-REVIEW-LINK/review"
+        "message": "Hey {{$json[\"customer_name\"]}} - Just a quick follow-up. If you enjoyed your experience with us, a Google review would mean a lot. {{$json[\"review_link\"] || \"https://g.page/r/YOUR-REVIEW-LINK/review\"}} Reply STOP to opt out."
       },
       "id": "Reminder_SMS",
       "name": "Send Reminder SMS",
       "type": "n8n-nodes-base.twilio",
       "typeVersion": 1,
-      "position": [1200, 300],
+      "position": [1800, 60],
       "credentials": {
         "twilioApi": {
           "id": "YOUR_TWILIO_CREDENTIAL_ID",
           "name": "Twilio Account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"error\"]}}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "Check_SMS2_Success",
+      "name": "SMS 2 Sent Successfully?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2030, 60],
+      "notes": "Only notify owner if reminder SMS was actually delivered"
+    },
+    {
+      "parameters": {
+        "fromEmail": "business@example.com",
+        "toEmail": "owner@example.com",
+        "subject": "Review Reminder Sent — {{$json[\"customer_name\"]}}",
+        "text": "Both review request SMSes were successfully sent to {{$json[\"customer_name\"]}} ({{$json[\"phone\"]}}) for their {{$json[\"service\"]}}.\n\nSale ID: {{$json[\"sale_id\"]}}\n\nNo further action needed unless they respond."
+      },
+      "id": "Notify_Owner",
+      "name": "Notify Owner",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [2260, 60],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Business Gmail"
         }
       }
     },
@@ -75,14 +176,14 @@
       "parameters": {
         "fromEmail": "business@example.com",
         "toEmail": "owner@example.com",
-        "subject": "Review Reminder Sent",
-        "text": "A reminder SMS was sent to {{$json[\"customer_name\"]}} for a Google review request."
+        "subject": "Review SMS Failed — {{$json[\"customer_name\"]}}",
+        "text": "An SMS in the review sequence failed to send.\n\nCustomer: {{$json[\"customer_name\"]}}\nPhone: {{$json[\"phone\"]}}\nSale ID: {{$json[\"sale_id\"]}}\nError: {{$json[\"error\"]}}\n\nPlease follow up manually."
       },
-      "id": "Notify_Owner",
-      "name": "Notify Owner",
+      "id": "Notify_Owner_Error",
+      "name": "Notify Owner of Failure",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 1,
-      "position": [1450, 300],
+      "position": [1360, 420],
       "credentials": {
         "gmailOAuth2": {
           "id": "YOUR_GMAIL_CREDENTIAL_ID",
@@ -96,11 +197,23 @@
       "main": [
         [
           {
-            "node": "Wait 2 Days",
+            "node": "Check: Valid & Not Opted Out",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "Check: Valid & Not Opted Out": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Days",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     },
     "Wait 2 Days": {
@@ -118,7 +231,25 @@
       "main": [
         [
           {
+            "node": "SMS 1 Sent Successfully?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMS 1 Sent Successfully?": {
+      "main": [
+        [
+          {
             "node": "Wait 5 Days",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Owner of Failure",
             "type": "main",
             "index": 0
           }
@@ -129,18 +260,48 @@
       "main": [
         [
           {
-            "node": "Send Reminder SMS",
+            "node": "Still Not Opted Out?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
+    "Still Not Opted Out?": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder SMS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
     "Send Reminder SMS": {
       "main": [
         [
           {
+            "node": "SMS 2 Sent Successfully?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMS 2 Sent Successfully?": {
+      "main": [
+        [
+          {
             "node": "Notify Owner",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Owner of Failure",
             "type": "main",
             "index": 0
           }
@@ -150,5 +311,5 @@
   },
   "active": false,
   "settings": {},
-  "versionId": "1"
+  "versionId": "2"
 }
